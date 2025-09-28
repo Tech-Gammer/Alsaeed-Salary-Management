@@ -6,6 +6,8 @@ import 'Employees/employee_management_page.dart'; // For date formatting
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import 'Employees/payroll_processing_page.dart';
+
 class PlaceholderPage extends StatelessWidget {
   final String title;
   const PlaceholderPage({super.key, required this.title});
@@ -81,7 +83,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _navigateToPayroll(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaceholderPage(title: "Run Payroll")));
+    Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const PayrollProcessingPage())
+    );
   }
 
   void _navigateToReports(BuildContext context) {
