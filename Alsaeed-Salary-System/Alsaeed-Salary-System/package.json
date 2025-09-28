@@ -1,0 +1,25 @@
+{
+  "name": "alsaeed-salary-system",
+  "version": "1.0.0",
+  "description": "A salary management system for Alsaeed.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^8.5.1",
+    "body-parser": "^1.19.0",
+    "cors": "^2.8.5",
+    "sequelize": "^6.6.5",
+    "mysql2": "^2.3.3",
+    "dotenv": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.7"
+  },
+  "author": "Your Name",
+  "license": "ISC"
+}
