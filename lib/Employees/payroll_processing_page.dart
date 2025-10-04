@@ -4,8 +4,10 @@ import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:intl/intl.dart';
 
-import '../modelpayroll.dart';
+import '../models/kharchamodel.dart';
+import '../models/modelpayroll.dart';
 import 'create_payroll_period_page.dart';
 
 class PayrollProcessingPage extends StatefulWidget {
@@ -27,9 +29,14 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   Department? _selectedDepartment;
   PayrollPeriod? _selectedPeriod;
   List<EmployeePayroll> _employees = [];
+  List<EmployeePayroll> _selectedEmployees = [];
+  List<Kharcha> _kharchas = [];
   bool _isLoading = false;
   bool _isGenerating = false;
-
+  bool _selectAllEmployees = true;
+  final Map<int, TextEditingController> _workingDaysControllers = {};
+  final Map<int, TextEditingController> _leaveDaysControllers = {};
+  final Map<int, bool> _employeeExpandedState = {};
   static const String _apiBaseUrl = "http://localhost:3000/api";
 
   @override
@@ -83,7 +90,12 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
         final List data = jsonDecode(response.body);
         setState(() {
           _employees = data.map((emp) => EmployeePayroll.fromJson(emp)).toList();
+          _selectedEmployees = List.from(_employees); // Select all by default
+          _workingDaysControllers.clear();
+          _leaveDaysControllers.clear();
+          _employeeExpandedState.clear();
         });
+        _fetchKharchas(); // Load kharchas for the selected department/period
       } else {
         _showError("Failed to load employees: ${response.statusCode}");
       }
@@ -91,6 +103,44 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       _showError("Error loading employees: $e");
     } finally {
       setState(() { _isLoading = false; });
+    }
+  }
+
+  Future<void> _fetchKharchas() async {
+    if (_selectedDepartment == null || _selectedPeriod == null) return;
+
+    try {
+      String url = "$_apiBaseUrl/kharcha";
+      final Map<String, String> params = {
+        'department_id': _selectedDepartment!.id.toString(),
+        'period_id': _selectedPeriod!.id.toString(),
+      };
+
+      url += "?${Uri(queryParameters: params).query}";
+
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List kharchaList = (data is Map && data.containsKey('kharchas'))
+            ? (data['kharchas'] ?? [])
+            : (data is List ? data : []);
+
+        final List<Kharcha> parsedKharchas = kharchaList.map((k) {
+          try {
+            return Kharcha.fromJson(k);
+          } catch (e) {
+            print("❌ Error parsing kharcha: $e");
+            return null;
+          }
+        }).whereType<Kharcha>().toList();
+
+        setState(() {
+          _kharchas = parsedKharchas;
+        });
+      }
+    } catch (e) {
+      print("Error loading kharchas: $e");
     }
   }
 
@@ -110,19 +160,142 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
     );
   }
 
+  void _toggleEmployeeSelection(EmployeePayroll employee) {
+    setState(() {
+      if (_selectedEmployees.contains(employee)) {
+        _selectedEmployees.remove(employee);
+      } else {
+        _selectedEmployees.add(employee);
+      }
+      _selectAllEmployees = _selectedEmployees.length == _employees.length;
+    });
+  }
+
+  void _toggleSelectAllEmployees() {
+    setState(() {
+      if (_selectAllEmployees) {
+        _selectedEmployees.clear();
+        _selectAllEmployees = false;
+      } else {
+        _selectedEmployees = List.from(_employees);
+        _selectAllEmployees = true;
+      }
+    });
+  }
+
+  double _getEmployeeKharcha(int employeeId) {
+    return _kharchas
+        .where((kharcha) => kharcha.employeeId == employeeId && kharcha.kharchaType == 'individual')
+        .fold(0.0, (sum, kharcha) => sum + kharcha.amount);
+  }
+
+  // Get detailed list of kharchas for an employee
+  List<Kharcha> _getEmployeeKharchaList(int employeeId) {
+    return _kharchas
+        .where((kharcha) => kharcha.employeeId == employeeId && kharcha.kharchaType == 'individual')
+        .toList();
+  }
+
+  double _getDepartmentKharcha() {
+    return _kharchas
+        .where((kharcha) => kharcha.kharchaType == 'department')
+        .fold(0.0, (sum, kharcha) => sum + kharcha.amount);
+  }
+
+  // Format date for display
+  String _formatKharchaDate(DateTime date) {
+    return DateFormat('dd MMM yyyy').format(date);
+  }
+
+  // Show detailed kharcha dialog
+  void _showEmployeeKharchaDetails(EmployeePayroll employee, List<Kharcha> kharchaList) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.money_off, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text("${employee.name}'s Kharcha Details"),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              if (kharchaList.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(
+                    "No individual kharcha records found",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              else
+                Column(
+                  children: kharchaList.map((kharcha) {
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.orange.withOpacity(0.1),
+                          child: const Icon(Icons.money_off, size: 20, color: Colors.orange),
+                        ),
+                        title: Text(
+                          kharcha.description.isEmpty ? "No description" : kharcha.description,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        subtitle: Text(_formatKharchaDate(kharcha.date)),
+                        trailing: Text(
+                          "₹${kharcha.amount.toStringAsFixed(2)}",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _generatePayroll() async {
     if (_selectedDepartment == null || _selectedPeriod == null) {
       _showError("Please select department and period");
       return;
     }
 
+    if (_selectedEmployees.isEmpty) {
+      _showError("Please select at least one employee");
+      return;
+    }
+
     setState(() { _isGenerating = true; });
 
     try {
-      final payrollEmployees = _employees.map((emp) {
+      final departmentKharcha = _getDepartmentKharcha();
+      final departmentKharchaPerEmployee = departmentKharcha / _selectedEmployees.length;
+
+      final payrollEmployees = _selectedEmployees.map((emp) {
         final calculatedBasicSalary = _calculateEmployeeSalary(emp);
         final allowances = calculatedBasicSalary * 0.1;
-        final deductions = calculatedBasicSalary * 0.05;
+        final individualKharcha = _getEmployeeKharcha(emp.id);
+        final totalKharcha = individualKharcha + departmentKharchaPerEmployee;
+        final deductions = (calculatedBasicSalary * 0.05) + totalKharcha;
         final netSalary = calculatedBasicSalary + allowances - deductions;
 
         final dailyRate = emp.salary / 30;
@@ -132,8 +305,16 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
         // Prepare components
         final components = [
           {"type": "allowance", "name": "House Rent", "amount": allowances},
-          {"type": "deduction", "name": "Tax", "amount": deductions},
+          {"type": "deduction", "name": "Tax", "amount": calculatedBasicSalary * 0.05},
         ];
+
+        // Add kharcha components
+        if (individualKharcha > 0) {
+          components.add({"type": "deduction", "name": "Individual Kharcha", "amount": individualKharcha});
+        }
+        if (departmentKharchaPerEmployee > 0) {
+          components.add({"type": "deduction", "name": "Department Kharcha Share", "amount": departmentKharchaPerEmployee});
+        }
 
         // Add working salary breakdown if not full month
         if (emp.workingDays > 0 && emp.workingDays < 30) {
@@ -155,6 +336,7 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           "working_salary": workingSalary,
           "leave_salary": leaveSalary,
           "components": components,
+          "kharcha_deductions": totalKharcha,
         };
       }).toList();
 
@@ -169,8 +351,8 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
 
       if (response.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Payroll generated successfully"),
+          const SnackBar(
+            content: Text("Payroll generated successfully"),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -306,6 +488,9 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                 setState(() {
                   _selectedDepartment = dept;
                   _employees.clear();
+                  _selectedEmployees.clear();
+                  _kharchas.clear();
+                  _employeeExpandedState.clear();
                 });
                 if (dept != null) _loadDepartmentEmployees();
               },
@@ -378,7 +563,9 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
               onChanged: (period) {
                 setState(() {
                   _selectedPeriod = period;
+                  _kharchas.clear();
                 });
+                if (_selectedDepartment != null) _fetchKharchas();
               },
             ),
           ),
@@ -407,6 +594,97 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
     );
   }
 
+  Widget _buildKharchaSummary() {
+    if (_kharchas.isEmpty || _selectedDepartment == null) return const SizedBox();
+
+    final departmentKharcha = _getDepartmentKharcha();
+    final totalIndividualKharcha = _kharchas
+        .where((kharcha) => kharcha.kharchaType == 'individual')
+        .fold(0.0, (sum, kharcha) => sum + kharcha.amount);
+
+    return Card(
+      elevation: 2,
+      color: Colors.orange[50],
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.money_off, color: Colors.orange, size: 20),
+                const SizedBox(width: 8),
+                const Text(
+                  "KHARCHA SUMMARY",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    "Total: ₹${(departmentKharcha + totalIndividualKharcha).toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                _buildKharchaItem("Department", departmentKharcha),
+                const SizedBox(width: 16),
+                _buildKharchaItem("Individual", totalIndividualKharcha),
+                const SizedBox(width: 16),
+                _buildKharchaItem(
+                    "Per Employee",
+                    _selectedEmployees.isEmpty ? 0 : departmentKharcha / _selectedEmployees.length
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildKharchaItem(String label, double amount) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.orange,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            "₹${amount.toStringAsFixed(2)}",
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.orange,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmployeesSection() {
     if (_selectedDepartment == null) {
       return const SizedBox();
@@ -432,6 +710,25 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                   ),
                 ),
                 const Spacer(),
+                // Select All toggle
+                Row(
+                  children: [
+                    Text(
+                      "Select All",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: textColor.withOpacity(0.7),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Switch(
+                      value: _selectAllEmployees,
+                      onChanged: (value) => _toggleSelectAllEmployees(),
+                      activeColor: primaryColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
@@ -439,7 +736,7 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
-                    "${_employees.length} employees",
+                    "${_selectedEmployees.length}/${_employees.length} selected",
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -457,7 +754,6 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       ),
     );
   }
-
 
   Widget _buildEmployeesList() {
     if (_isLoading) {
@@ -511,21 +807,30 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       itemCount: _employees.length,
       itemBuilder: (context, index) {
         final emp = _employees[index];
-        // Calculate salary whenever the widget builds
+        final isSelected = _selectedEmployees.contains(emp);
+        final individualKharcha = _getEmployeeKharcha(emp.id);
+        final individualKharchaList = _getEmployeeKharchaList(emp.id);
         emp.calculatedSalary = _calculateEmployeeSalary(emp);
 
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           child: Card(
             elevation: 1,
-            color: cardColor,
+            color: isSelected ? primaryColor.withOpacity(0.05) : cardColor,
             child: Padding(
               padding: const EdgeInsets.all(12.0),
               child: Column(
                 children: [
-                  // Employee basic info row
+                  // Employee selection and basic info row
                   Row(
                     children: [
+                      // Selection checkbox
+                      Checkbox(
+                        value: isSelected,
+                        onChanged: (value) => _toggleEmployeeSelection(emp),
+                        activeColor: primaryColor,
+                      ),
+                      // Employee avatar
                       Container(
                         width: 40,
                         height: 40,
@@ -556,6 +861,35 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                               emp.designation,
                               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                             ),
+                            if (individualKharcha > 0)
+                              GestureDetector(
+                                onTap: () => _showEmployeeKharchaDetails(emp, individualKharchaList),
+                                child: Container(
+                                  margin: const EdgeInsets.only(top: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.money_off, size: 12, color: Colors.orange),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        "Kharcha: ₹${individualKharcha.toStringAsFixed(2)}",
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.visibility, size: 10, color: Colors.orange),
+                                    ],
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -583,8 +917,16 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                     ],
                   ),
 
-                  // Days input section - only show for full_month period
-                  if (_selectedPeriod?.periodType == 'full_month') ...[
+                  // Show kharcha breakdown if available and selected
+                  if (individualKharchaList.isNotEmpty && isSelected) ...[
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+                    _buildKharchaBreakdown(individualKharchaList, individualKharcha),
+                  ],
+
+                  // Days input section - only show for full_month period and selected employees
+                  if (isSelected && _selectedPeriod?.periodType == 'full_month') ...[
                     const SizedBox(height: 12),
                     const Divider(height: 1),
                     const SizedBox(height: 12),
@@ -610,11 +952,104 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
     );
   }
 
+  // Build kharcha breakdown widget
+  Widget _buildKharchaBreakdown(List<Kharcha> kharchaList, double totalKharcha) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.list, size: 16, color: Colors.orange),
+            const SizedBox(width: 4),
+            Text(
+              "Individual Kharcha Breakdown",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.orange,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              "Total: ₹${totalKharcha.toStringAsFixed(2)}",
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.orange,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...kharchaList.map((kharcha) {
+          return Container(
+            margin: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.orange.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        kharcha.description.isEmpty ? "No description" : kharcha.description,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: textColor,
+                        ),
+                      ),
+                      Text(
+                        _formatKharchaDate(kharcha.date),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  "₹${kharcha.amount.toStringAsFixed(2)}",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ],
+    );
+  }
+
   Widget _buildDayInputSection(EmployeePayroll emp, bool isWorkingDays) {
     final label = isWorkingDays ? "Working Days" : "Leave Days";
     final currentValue = isWorkingDays ? emp.workingDays : emp.leaveDays;
     final icon = isWorkingDays ? Icons.work : Icons.beach_access;
     final color = isWorkingDays ? Colors.green : Colors.orange;
+
+    final controllerKey = emp.id;
+    TextEditingController controller;
+
+    if (isWorkingDays) {
+      if (!_workingDaysControllers.containsKey(controllerKey)) {
+        _workingDaysControllers[controllerKey] = TextEditingController(text: currentValue.toString());
+      }
+      controller = _workingDaysControllers[controllerKey]!;
+    } else {
+      if (!_leaveDaysControllers.containsKey(controllerKey)) {
+        _leaveDaysControllers[controllerKey] = TextEditingController(text: currentValue.toString());
+      }
+      controller = _leaveDaysControllers[controllerKey]!;
+    }
 
     return Expanded(
       child: Column(
@@ -642,35 +1077,50 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.grey.shade300),
             ),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: Icon(Icons.remove, size: 16, color: color),
-                  onPressed: () {
-                    _updateEmployeeDays(emp, isWorkingDays, -1);
-                  },
-                  padding: const EdgeInsets.all(4),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(
-                      currentValue.toString(),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: color,
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(Icons.add, size: 16, color: color),
-                  onPressed: () {
-                    _updateEmployeeDays(emp, isWorkingDays, 1);
-                  },
-                  padding: const EdgeInsets.all(4),
-                ),
-              ],
+            child: TextField(
+              controller: controller,
+              keyboardType: TextInputType.numberWithOptions(
+                  decimal: false,
+                  signed: !isWorkingDays
+              ),
+              textAlign: TextAlign.center,
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                hintText: '0',
+                hintStyle: TextStyle(color: Colors.grey.shade400),
+              ),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+              onChanged: (value) {
+                if (value.isEmpty) {
+                  _updateEmployeeDays(emp, isWorkingDays, 0);
+                  return;
+                }
+
+                if (!isWorkingDays && value == '-') {
+                  return;
+                }
+
+                final RegExp validPattern = isWorkingDays
+                    ? RegExp(r'^\d+$')
+                    : RegExp(r'^-?\d+$');
+
+                if (validPattern.hasMatch(value)) {
+                  final numericValue = int.parse(value);
+                  _updateEmployeeDays(emp, isWorkingDays, numericValue);
+                } else {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    controller.text = currentValue.toString();
+                    controller.selection = TextSelection.fromPosition(
+                      TextPosition(offset: controller.text.length),
+                    );
+                  });
+                }
+              },
             ),
           ),
         ],
@@ -683,6 +1133,8 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
     final dailyRate = emp.salary / totalMonthDays;
     final workingSalary = dailyRate * emp.workingDays;
     final leaveSalary = dailyRate * emp.leaveDays;
+    final individualKharcha = _getEmployeeKharcha(emp.id);
+    final departmentKharchaShare = _selectedEmployees.isEmpty ? 0 : _getDepartmentKharcha() / _selectedEmployees.length;
 
     return Expanded(
       child: Column(
@@ -702,29 +1154,46 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
             style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
           ),
           Text(
-            "Work: ₹${workingSalary.toStringAsFixed(2)}",
+            "Work: ${emp.workingDays} days",
             style: TextStyle(fontSize: 10, color: Colors.green.shade600),
           ),
           Text(
-            "Leave: ₹${leaveSalary.toStringAsFixed(2)}",
+            "Leave: ${emp.leaveDays} days",
             style: TextStyle(fontSize: 10, color: Colors.orange.shade600),
+          ),
+          if (individualKharcha > 0)
+            Text(
+              "Kharcha: -₹${individualKharcha.toStringAsFixed(2)}",
+              style: TextStyle(fontSize: 10, color: Colors.red.shade600),
+            ),
+          const SizedBox(height: 2),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: secondaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              "Net: ₹${emp.calculatedSalary.toStringAsFixed(2)}",
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: secondaryColor,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _updateEmployeeDays(EmployeePayroll emp, bool isWorkingDays, int change) {
+  void _updateEmployeeDays(EmployeePayroll emp, bool isWorkingDays, int newValue) {
     setState(() {
       if (isWorkingDays) {
-        final newValue = emp.workingDays + change;
-        emp.workingDays = newValue.clamp(0, 30); // Limit between 0-30 days
+        emp.workingDays = newValue < 0 ? 0 : newValue;
       } else {
-        final newValue = emp.leaveDays + change;
-        emp.leaveDays = newValue.clamp(0, 30); // Limit between 0-30 days
+        emp.leaveDays = newValue;
       }
-
-      // Recalculate salary
       emp.calculatedSalary = _calculateEmployeeSalary(emp);
     });
   }
@@ -733,40 +1202,40 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
     if (_selectedPeriod == null) return emp.salary;
 
     if (_selectedPeriod!.periodType == 'full_month') {
-      // For full month period with custom days calculation
-      final totalMonthDays = 30; // Standard month days
-
-      // Use provided working days or default to full month
-      final workingDays = emp.workingDays > 0 ? emp.workingDays : totalMonthDays;
-      final leaveDays = emp.leaveDays;
-
-      // Daily rate based on monthly salary
+      final totalMonthDays = 30;
       final dailyRate = emp.salary / totalMonthDays;
 
-      // Calculate base salary for working days
-      final workingSalary = dailyRate * workingDays;
+      final double actualWorkingDays = emp.workingDays.toDouble();
+      final double actualLeaveDays = emp.leaveDays.toDouble();
 
-      // Calculate leave salary (for paid leaves)
-      final leaveSalary = dailyRate * leaveDays;
+      final workingSalary = dailyRate * actualWorkingDays;
+      final leaveSalary = dailyRate * actualLeaveDays;
 
-      // Total salary = working salary + leave salary
       final totalSalary = workingSalary + leaveSalary;
 
-      return totalSalary;
+      // Deduct kharcha
+      final individualKharcha = _getEmployeeKharcha(emp.id);
+      final departmentKharchaShare = _selectedEmployees.isEmpty ? 0 : _getDepartmentKharcha() / _selectedEmployees.length;
+      final totalKharcha = individualKharcha + departmentKharchaShare;
+
+      final netSalary = totalSalary - totalKharcha;
+
+      return netSalary < 0 ? 0.0 : netSalary;
 
     } else {
-      // For custom range period - use the original logic
       final startDate = DateTime.parse(_selectedPeriod!.startDate);
       final endDate = DateTime.parse(_selectedPeriod!.endDate);
-      final totalDays = endDate.difference(startDate).inDays + 1;
-      final dailyRate = emp.salary / 30; // Standard daily rate
+      final totalDaysInPeriod = endDate.difference(startDate).inDays + 1;
 
-      return dailyRate * totalDays;
+      if (totalDaysInPeriod <= 0) return 0.0;
+
+      final dailyRate = emp.salary / 30;
+      return dailyRate * totalDaysInPeriod;
     }
   }
 
   Widget _buildGenerateButton() {
-    if (_employees.isEmpty || _selectedPeriod == null) {
+    if (_selectedEmployees.isEmpty || _selectedPeriod == null) {
       return const SizedBox();
     }
 
@@ -808,7 +1277,7 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                   : const Icon(Icons.play_arrow, size: 24),
               label: _isGenerating
                   ? const Text("GENERATING...")
-                  : const Text("GENERATE PAYROLL"),
+                  : Text("GENERATE PAYROLL (${_selectedEmployees.length} employees)"),
               style: ElevatedButton.styleFrom(
                 backgroundColor: secondaryColor,
                 foregroundColor: Colors.white,
@@ -825,10 +1294,17 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
 
   void _resetAllDays() {
     setState(() {
-      for (var emp in _employees) {
-        emp.workingDays = 0; // Reset to 0, will default to 30 in calculation
+      for (var emp in _selectedEmployees) {
+        emp.workingDays = 0;
         emp.leaveDays = 0;
         emp.calculatedSalary = _calculateEmployeeSalary(emp);
+
+        if (_workingDaysControllers.containsKey(emp.id)) {
+          _workingDaysControllers[emp.id]!.text = '0';
+        }
+        if (_leaveDaysControllers.containsKey(emp.id)) {
+          _leaveDaysControllers[emp.id]!.text = '0';
+        }
       }
     });
   }
@@ -849,7 +1325,9 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildSelectionCard(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+            _buildKharchaSummary(),
+            const SizedBox(height: 16),
             _buildEmployeesSection(),
             _buildGenerateButton(),
           ],
@@ -857,8 +1335,16 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _workingDaysControllers.forEach((key, controller) => controller.dispose());
+    _leaveDaysControllers.forEach((key, controller) => controller.dispose());
+    super.dispose();
+  }
 }
 
+// Keep the existing DepartmentPayrollPage class as it is...
 class DepartmentPayrollPage extends StatefulWidget {
   final int departmentId;
   final int periodId;
@@ -1059,7 +1545,7 @@ class _DepartmentPayrollPageState extends State<DepartmentPayrollPage> {
         padding: const EdgeInsets.all(20.0),
         child: Row(
           children: [
-             Icon(Icons.summarize, color: primaryColor, size: 24),
+            const Icon(Icons.summarize, color: primaryColor, size: 24),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

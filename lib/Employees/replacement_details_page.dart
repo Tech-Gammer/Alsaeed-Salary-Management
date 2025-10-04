@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
-import '../ReplacementRecord.dart';
+import '../models/ReplacementRecordmodel.dart';
 import 'deactivated_employees_page.dart';
 
 class ReplacementDetailsPage extends StatelessWidget {

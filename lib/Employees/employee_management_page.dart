@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import '../ReplacementRecord.dart';
+import '../models/ReplacementRecordmodel.dart';
 import 'AddEditEmployeePage.dart';
 import 'EmployeeLoansPage.dart';
 import 'deactivated_employees_page.dart';
@@ -874,7 +874,8 @@ class _EmployeeManagementPageState extends State<EmployeeManagementPage> {
       String reason,
       String date,
       String? previousReplacementId, // New parameter for chain tracking
-      ) async {
+      )
+  async {
     try {
       final response = await http.post(
         Uri.parse("$_apiBaseUrl/employees/$oldId/replace"),

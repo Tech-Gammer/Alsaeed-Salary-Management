@@ -3,6 +3,8 @@ import 'package:alsaeed_salary/Employees/salary_historyPage.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'kharcha_management_page.dart';
+
 // --- Color Definitions (Consistent Styling) ---
 const Color deptPrimaryColor = Color(0xFF00796B); // Teal shade for departments
 const Color deptAccentColor = Color(0xFF00ACC1); // Lighter teal
@@ -344,6 +346,19 @@ class _DepartmentManagementPageState extends State<DepartmentManagementPage> {
         backgroundColor: deptPrimaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 2.0,
+        // Add this in the AppBar of DepartmentManagementPage
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const KharchaManagementPage()),
+              );
+            },
+            tooltip: 'Manage Monthly Kharcha',
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _fetchDepartments,
