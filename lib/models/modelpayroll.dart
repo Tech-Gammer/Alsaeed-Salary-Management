@@ -51,9 +51,11 @@ class EmployeePayroll {
   final String designation;
   final double salary;
   final String departmentName;
-  int workingDays; // Add this
-  int leaveDays;   // Add this
-  double calculatedSalary; // Add this to store calculated amount
+  int workingDays;
+  int leaveDays;
+  double calculatedSalary;
+  bool applyKharchaCurrentMonth; // New field for kharcha checkbox
+  double kharchaAmount; // New field to store kharcha amount
 
   EmployeePayroll({
     required this.id,
@@ -64,6 +66,8 @@ class EmployeePayroll {
     this.workingDays = 0,
     this.leaveDays = 0,
     this.calculatedSalary = 0.0,
+    this.applyKharchaCurrentMonth = true, // Default to current month
+    this.kharchaAmount = 0.0, // Initialize with 0
   });
 
   factory EmployeePayroll.fromJson(Map<String, dynamic> json) {
@@ -76,6 +80,8 @@ class EmployeePayroll {
       workingDays: json['working_days'] ?? 0,
       leaveDays: json['leave_days'] ?? 0,
       calculatedSalary: _parseDouble(json['calculated_salary']),
+      applyKharchaCurrentMonth: json['apply_kharcha_current_month'] ?? true,
+      kharchaAmount: _parseDouble(json['kharcha_amount']),
     );
   }
 
@@ -89,9 +95,13 @@ class EmployeePayroll {
       'working_days': workingDays,
       'leave_days': leaveDays,
       'calculated_salary': calculatedSalary,
+      'apply_kharcha_current_month': applyKharchaCurrentMonth,
+      'kharcha_amount': kharchaAmount,
     };
   }
 }
+
+
 // Helper function to safely parse double values
 double _parseDouble(dynamic value) {
   if (value == null) return 0.0;

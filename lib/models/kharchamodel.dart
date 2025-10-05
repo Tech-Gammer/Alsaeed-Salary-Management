@@ -12,6 +12,7 @@ class Kharcha {
   final String periodName;
   final DateTime createdAt;
   final DateTime updatedAt;
+  bool includeInCurrentSalary; // Add this field
 
   Kharcha({
     required this.id,
@@ -27,6 +28,7 @@ class Kharcha {
     required this.periodName,
     required this.createdAt,
     required this.updatedAt,
+    this.includeInCurrentSalary = true, // Default to true
   });
 
   // Helper getter for display name
@@ -42,6 +44,11 @@ class Kharcha {
   // Helper getter for type display
   String get typeDisplay {
     return kharchaType == 'individual' ? '👤 Individual' : '🏢 Department';
+  }
+
+  // Helper getter for status display
+  String get statusDisplay {
+    return includeInCurrentSalary ? '💰 Current Month' : '⏳ Next Month';
   }
 
   factory Kharcha.fromJson(Map<String, dynamic> json) {
@@ -79,6 +86,26 @@ class Kharcha {
       periodName: json['period_name'] as String? ?? '',
       createdAt: parseDate(json['created_at']),
       updatedAt: parseDate(json['updated_at']),
+      includeInCurrentSalary: json['include_in_current_salary'] as bool? ?? true,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'department_id': departmentId,
+      'employee_id': employeeId,
+      'amount': amount,
+      'date': date.toIso8601String(),
+      'period_id': periodId,
+      'description': description,
+      'kharcha_type': kharchaType,
+      'department_name': departmentName,
+      'employee_name': employeeName,
+      'period_name': periodName,
+      'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
+      'include_in_current_salary': includeInCurrentSalary,
+    };
   }
 }

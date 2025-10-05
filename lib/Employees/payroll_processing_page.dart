@@ -48,6 +48,9 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   final Map<int, TextEditingController> _leaveDaysControllers = {};
   static const String _apiBaseUrl = "http://localhost:3000/api";
 
+
+
+
   @override
   void initState() {
     super.initState();
@@ -163,9 +166,15 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   bool _hasDepartmentKharcha() => _kharchas.any((k) => k.kharchaType == 'department' && k.departmentId == _selectedDepartment?.id);
 
   double _getTotalKharchaForEmployee(int employeeId) {
-    final individualKharcha = _getEmployeeKharcha(employeeId);
-    final departmentKharchaShare = _hasDepartmentKharcha() && _selectedEmployees.isNotEmpty ? _getDepartmentKharcha() / _selectedEmployees.length : 0.0;
-    return individualKharcha + departmentKharchaShare;
+    // If department has kharcha, don't assign it to individual employees
+    if (_hasDepartmentKharcha()) {
+      return 0.0; // Department kharcha will be handled separately in net salary calculation
+    }
+
+    // Only individual kharcha for this employee
+    return _kharchas
+        .where((k) => k.employeeId == employeeId && k.kharchaType == 'individual')
+        .fold(0.0, (sum, k) => sum + k.amount);
   }
 
   void _updateEmployeeDays(EmployeePayroll emp, bool isWorkingDays, String value) {
@@ -457,8 +466,25 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   }
 
   Widget _buildKharchaSummaryCard() {
-    final departmentKharcha = _getDepartmentKharcha();
-    final individualKharcha = _kharchas.fold(0.0, (sum, k) => k.kharchaType == 'individual' ? sum + k.amount : sum);
+    final hasDepartmentKharcha = _hasDepartmentKharcha();
+    final hasIndividualKharcha = _kharchas.any((k) => k.kharchaType == 'individual');
+
+    double departmentKharcha = 0.0;
+    double individualKharcha = 0.0;
+
+    if (hasDepartmentKharcha) {
+      // Show only department kharcha
+      departmentKharcha = _getDepartmentKharcha();
+      individualKharcha = 0.0;
+    } else if (hasIndividualKharcha) {
+      // Show only individual kharcha
+      departmentKharcha = 0.0;
+      individualKharcha = _kharchas.fold(0.0, (sum, k) => k.kharchaType == 'individual' ? sum + k.amount : sum);
+    } else {
+      // No kharcha to show
+      return SizedBox.shrink();
+    }
+
     final totalKharcha = departmentKharcha + individualKharcha;
 
     return Container(
@@ -499,13 +525,15 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: _buildKharchaItem("Department", departmentKharcha),
-              ),
-              SizedBox(width: 12),
-              Expanded(
-                child: _buildKharchaItem("Individual", individualKharcha),
-              ),
+              if (hasDepartmentKharcha)
+                Expanded(
+                  child: _buildKharchaItem("Department", departmentKharcha),
+                ),
+              if (hasDepartmentKharcha && hasIndividualKharcha) SizedBox(width: 12),
+              if (hasIndividualKharcha)
+                Expanded(
+                  child: _buildKharchaItem("Individual", individualKharcha),
+                ),
             ],
           ),
         ],
