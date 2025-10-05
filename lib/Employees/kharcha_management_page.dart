@@ -234,42 +234,81 @@ class _KharchaManagementPageState extends State<KharchaManagementPage> {
   void _showFilterEmployeeSuggestionsOverlay() {
     _hideFilterEmployeeSuggestionsOverlay();
 
-    if (_filteredFilterEmployees.isEmpty) return;
+    // if (_filteredFilterEmployees.isEmpty) return;
 
-    final overlay = Overlay.of(context);
-    _filterEmployeeOverlayEntry = OverlayEntry(
-      builder: (context) {
-        return CompositedTransformFollower(
-          link: _filterEmployeeSearchLayerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0.0, 55.0),
-          child: Material(
-            elevation: 4.0,
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              height: _filteredFilterEmployees.length * 60.0 > 240.0 ? 240.0 : null,
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                shrinkWrap: true,
-                itemCount: _filteredFilterEmployees.length,
-                itemBuilder: (context, index) {
-                  final employee = _filteredFilterEmployees[index];
-                  final isSelected = _selectedEmployee?.id == employee.id;
-                  return ListTile(
-                    title: Text(employee.name),
-                    subtitle: Text(employee.position),
-                    tileColor: isSelected ? secondaryColor.withOpacity(0.1) : null,
-                    onTap: () => _selectFilterEmployee(employee),
-                  );
-                },
+    // final overlay = Overlay.of(context);
+    // _filterEmployeeOverlayEntry = OverlayEntry(
+    //   builder: (context) {
+    //     return CompositedTransformFollower(
+    //       link: _filterEmployeeSearchLayerLink,
+    //       showWhenUnlinked: false,
+    //       offset: const Offset(0.0, 55.0),
+    //       child: Material(
+    //         elevation: 4.0,
+    //         borderRadius: BorderRadius.circular(12),
+    //         child: SizedBox(
+    //           height: _filteredFilterEmployees.length * 60.0 > 240.0 ? 240.0 : null,
+    //           child: ListView.builder(
+    //             padding: EdgeInsets.zero,
+    //             shrinkWrap: true,
+    //             itemCount: _filteredFilterEmployees.length,
+    //             itemBuilder: (context, index) {
+    //               final employee = _filteredFilterEmployees[index];
+    //               final isSelected = _selectedEmployee?.id == employee.id;
+    //               return ListTile(
+    //                 title: Text(employee.name),
+    //                 subtitle: Text(employee.position),
+    //                 tileColor: isSelected ? secondaryColor.withOpacity(0.1) : null,
+    //                 onTap: () => _selectFilterEmployee(employee),
+    //               );
+    //             },
+    //           ),
+    //         ),
+    //       ),
+    //     );
+    //   },
+    // );
+    if (_filteredFilterEmployees.isEmpty) {
+      final overlay = Overlay.of(context);
+      _filterEmployeeOverlayEntry = OverlayEntry(
+        builder: (context) {
+          return CompositedTransformFollower(
+            link: _filterEmployeeSearchLayerLink,
+            showWhenUnlinked: false,
+            offset: const Offset(0.0, 55.0),
+            child: Material(
+              elevation: 4.0,
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: _filteredFilterEmployees.length * 60.0 > 240.0
+                    ? 240.0
+                    : null,
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: _filteredFilterEmployees.length,
+                  itemBuilder: (context, index) {
+                    final employee = _filteredFilterEmployees[index];
+                    final isSelected = _selectedEmployee?.id == employee.id;
+                    return ListTile(
+                      title: Text(employee.name),
+                      subtitle: Text(employee.position),
+                      tileColor: isSelected
+                          ? secondaryColor.withOpacity(0.1)
+                          : null,
+                      onTap: () => _selectFilterEmployee(employee),
+                    );
+                  },
+                ),
               ),
             ),
-          ),
-        );
-      },
-    );
-
-    overlay.insert(_filterEmployeeOverlayEntry!);
+          );
+        },
+      );
+      overlay.insert(_employeeOverlayEntry!);
+      return;
+    }
+    // overlay.insert(_filterEmployeeOverlayEntry!);
     setState(() {
       _showFilterEmployeeSuggestions = true;
     });
@@ -292,25 +331,63 @@ class _KharchaManagementPageState extends State<KharchaManagementPage> {
         final List data = jsonDecode(response.body);
         if (mounted) {
           setState(() {
-            _departments = data.map((dept) => Department.fromJson(dept)).toList();
+            _departments = data.map((dept) {
+              try {
+                return Department.fromJson(dept);
+              } catch (e) {
+                print("❌ Error parsing department: $e");
+                return Department(
+                  id: int.tryParse(dept['id']?.toString() ?? '0') ?? 0,
+                  name: dept['name']?.toString() ?? 'Unknown Department',
+                  totalSalary: 0.0,
+                );
+              }
+            }).toList();
           });
         }
+      } else {
+        print("❌ Failed to fetch departments: ${response.statusCode}");
       }
     } catch (e) {
-      _showError("Error fetching departments: $e");
+      print("❌ Error fetching departments: $e");
     }
   }
 
   Future<void> _fetchEmployees() async {
     try {
-      final response = await http.get(Uri.parse("$_apiBaseUrl/employees"));
+      setState(() { _isLoading = true; });
+
+      // Add ?active=1 to only get active employees
+      final response = await http.get(Uri.parse("$_apiBaseUrl/employees?active=1"));
+
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
+        print("✅ Fetched ${data.length} active employees"); // Debug log
+
         if (mounted) {
           setState(() {
-            _employees = data.map((emp) => Employee.fromJson(emp)).toList();
+            _employees = data.map((emp) {
+              try {
+                return Employee.fromJson(emp);
+              } catch (e) {
+                print("❌ Error parsing employee: $e");
+                print("❌ Employee data: $emp");
+                // Return a default employee if parsing fails
+                return Employee(
+                  id: emp['id']?.toString() ?? '0',
+                  name: emp['name']?.toString() ?? 'Unknown',
+                  position: emp['designation']?.toString() ?? emp['position']?.toString() ?? '',
+                  department: emp['department']?.toString() ?? '',
+                  joinDate: emp['registerDate']?.toString() ?? emp['joinDate']?.toString() ?? '',
+                  isActive: true,
+                );
+              }
+            }).toList();
+
             _filteredEmployees = _employees;
             _filteredFilterEmployees = _employees;
+
+            print("✅ Successfully loaded ${_employees.length} employees");
           });
         }
       } else {
@@ -318,6 +395,11 @@ class _KharchaManagementPageState extends State<KharchaManagementPage> {
       }
     } catch (e) {
       _showError("Error fetching employees: $e");
+      print("❌ Detailed error: $e");
+    } finally {
+      if (mounted) {
+        setState(() { _isLoading = false; });
+      }
     }
   }
 
