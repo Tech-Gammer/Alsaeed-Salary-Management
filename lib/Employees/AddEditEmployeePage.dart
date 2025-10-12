@@ -110,8 +110,6 @@ class _AddEditEmployeePageState extends State<AddEditEmployeePage> {
     }
   }
 
-
-
   @override
   void dispose() {
     // Dispose all controllers
@@ -211,8 +209,6 @@ class _AddEditEmployeePageState extends State<AddEditEmployeePage> {
       }
     }
   }
-
-
 
   @override
   Widget build(BuildContext context) {

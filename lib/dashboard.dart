@@ -21,7 +21,6 @@ class PlaceholderPage extends StatelessWidget {
   }
 }
 
-
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -41,8 +40,7 @@ class _HomePageState extends State<HomePage> {
   final String _nextPayDate = DateFormat('MMMM dd, yyyy').format(DateTime.now().add(const Duration(days: 10)));
   final double _ytdExpenses = 450123.75;
   int _employeeCount = 0; // start with 0
-
-
+  bool _isRefreshing = false; // Track refresh state
 
   @override
   void initState() {
@@ -65,9 +63,52 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print("⚠️ Error fetching employee count: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error fetching employees count"), backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error fetching employees count"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // Refresh method that reloads all data
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return; // Prevent multiple simultaneous refreshes
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      await _fetchEmployeeCount();
+      // Add other data fetching methods here if you have more
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Data refreshed successfully"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print("Error refreshing data: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error refreshing data: $e"),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
     }
   }
 
@@ -98,7 +139,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _logout(BuildContext context) {
-
     Navigator.of(context).pushReplacementNamed('/login'); // Assuming you have a '/login' route
     ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Logged out successfully"))
@@ -115,6 +155,21 @@ class _HomePageState extends State<HomePage> {
         elevation: 2.0,
         iconTheme: const IconThemeData(color: Colors.white), // For drawer icon
         actions: [
+          // Refresh Icon Button
+          IconButton(
+            icon: _isRefreshing
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+                : const Icon(Icons.refresh_outlined, color: Colors.white),
+            onPressed: _isRefreshing ? null : _refreshData,
+            tooltip: 'Refresh Data',
+          ),
           IconButton(
             icon: const Icon(Icons.notifications_none, color: Colors.white),
             onPressed: () {
@@ -197,7 +252,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildDashboardBody(BuildContext context) {
-    return SingleChildScrollView(
+    return _isRefreshing
+        ? const Center(
+      child: CircularProgressIndicator(),
+    )
+        : SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
