@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 28, 2025 at 01:35 PM
+-- Generation Time: Oct 13, 2025 at 06:56 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -39,8 +39,9 @@ CREATE TABLE `departments` (
 --
 
 INSERT INTO `departments` (`id`, `name`, `description`, `total_salary`) VALUES
-(5, 'Khamira', NULL, 1300000.00),
-(6, 'Accounts', NULL, 0.00);
+(7, 'Accounts', NULL, 0.00),
+(8, 'Fresh Cake', NULL, 0.00),
+(9, 'Nimko', NULL, 0.00);
 
 -- --------------------------------------------------------
 
@@ -55,13 +56,6 @@ CREATE TABLE `department_salary_history` (
   `new_salary` decimal(12,2) DEFAULT NULL,
   `changed_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
--- Dumping data for table `department_salary_history`
---
-
-INSERT INTO `department_salary_history` (`id`, `department_id`, `old_salary`, `new_salary`, `changed_at`) VALUES
-(2, 5, 600000.00, 1300000.00, '2025-09-28 10:40:47');
 
 -- --------------------------------------------------------
 
@@ -91,9 +85,12 @@ CREATE TABLE `employees` (
 --
 
 INSERT INTO `employees` (`id`, `registerDate`, `name`, `fatherName`, `age`, `education`, `designation`, `department`, `salary`, `reference`, `idCardNumber`, `address`, `phoneNumber`, `isActive`) VALUES
-(6, '2025-09-27', 'Umair', 'Arshad', 25, 'BS COMPUTER SCIENCE', 'Helper', 'Accounts', 150000.00, 'ads', '3410116240343', 'Alam CHowk', '03046455926', 0),
-(7, '2025-09-27', 'Hassan', 'Don\'t Know', 30, 'Don\'t Know', 'Don\'t Know', 'Accounts', 4500.00, 'Don\'t Know', 'Don\'t Know', 'Don\'t Know', '0316546852', 0),
-(8, '2025-09-27', 'Umer', 'Don\'t Know', 12, 'Don\'t Know', 'Don\'t Know', 'Accounts', 0.00, 'Don\'t Know', 'Don\'t Know', 'Don\'t Know', 'Don\'t Know', 1);
+(9, '2025-10-13', 'Umair', 'Arshad', 25, 'BS CS', 'Software Developer', 'Accounts', 45000.00, '', '3410116240343', 'Alam Chowk', '03076455926', 1),
+(10, '2025-10-13', 'Hassan', 'N/A', 31, 'BA', 'Computer Operator', 'Accounts', 35000.00, 'Self', '165131321513', 'Gap Chowk', '030413256484', 0),
+(11, '2025-10-13', 'Ali Haider', 'Muhammad Ameen', 22, 'FA', 'Computer Operator', 'Accounts', 35000.00, 'Umair Arshad', '1561231843', 'Alam Chowk', '03007465064', 1),
+(12, '2025-10-13', 'مستری رفیق', 'نل', 50, 'BSCS', 'Mistri Nimko', 'Nimko', 55000.00, '', '341051313532', 'Alam Chowk', '03076455926', 1),
+(13, '2025-10-13', 'علی اکبر', '', 30, 'BsCS', 'Helper', 'Nimko', 29000.00, '', '341016426452', 'Gap Chowk', '03076445926', 1),
+(14, '2025-10-13', 'علی', '', 25, 'Matric', 'Helper', 'Nimko', 17000.00, '', '13151435212', '', '03074645559', 1);
 
 -- --------------------------------------------------------
 
@@ -109,6 +106,14 @@ CREATE TABLE `employee_expenses` (
   `expenseDate` datetime NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `employee_expenses`
+--
+
+INSERT INTO `employee_expenses` (`id`, `employeeId`, `description`, `amount`, `expenseDate`) VALUES
+(3, 9, 'Kharcha', 3000.00, '2025-10-23 00:00:00'),
+(4, 9, 'kharcha', 1000.00, '2025-10-23 00:00:00');
+
 -- --------------------------------------------------------
 
 --
@@ -122,6 +127,13 @@ CREATE TABLE `employee_loans` (
   `loanDate` date NOT NULL,
   `description` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `employee_loans`
+--
+
+INSERT INTO `employee_loans` (`id`, `employeeId`, `amount`, `loanDate`, `description`) VALUES
+(2, 9, 150000.00, '2025-10-13', 'bike leni he');
 
 -- --------------------------------------------------------
 
@@ -144,8 +156,56 @@ CREATE TABLE `employee_replacements` (
 --
 
 INSERT INTO `employee_replacements` (`id`, `oldEmployeeId`, `newEmployeeId`, `reason`, `replacementDate`, `previousReplacementId`, `nextReplacementId`) VALUES
-(3, 6, 7, 'Don\'t Know', '2025-09-27', NULL, NULL),
-(4, 7, 8, 'Don\'t Know', '2025-09-27', NULL, NULL);
+(5, 10, 11, 'None', '2025-10-13', NULL, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `kharcha`
+--
+
+CREATE TABLE `kharcha` (
+  `id` int(11) NOT NULL,
+  `department_id` int(11) DEFAULT NULL,
+  `period_id` int(11) NOT NULL,
+  `description` text DEFAULT NULL,
+  `amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `date` date NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `kharcha_type` enum('department','individual') NOT NULL DEFAULT 'department',
+  `employee_id` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `kharcha`
+--
+
+INSERT INTO `kharcha` (`id`, `department_id`, `period_id`, `description`, `amount`, `date`, `created_at`, `updated_at`, `kharcha_type`, `employee_id`) VALUES
+(2, 9, 8, 'Kharcha', 30000.00, '2025-10-23', '2025-10-13 07:32:53', '2025-10-13 07:32:53', 'department', NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `payroll_periods`
+--
+
+CREATE TABLE `payroll_periods` (
+  `id` int(11) NOT NULL,
+  `period_name` varchar(255) NOT NULL,
+  `period_type` enum('monthly','weekly','custom','full_month','custom_range') DEFAULT 'full_month',
+  `start_date` date NOT NULL,
+  `end_date` date NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `payroll_periods`
+--
+
+INSERT INTO `payroll_periods` (`id`, `period_name`, `period_type`, `start_date`, `end_date`, `created_at`, `updated_at`) VALUES
+(8, 'Salary - October 2025', 'full_month', '2025-10-01', '2025-10-31', '2025-10-13 07:27:54', '2025-10-13 07:27:54');
 
 -- --------------------------------------------------------
 
@@ -209,6 +269,20 @@ ALTER TABLE `employee_replacements`
   ADD KEY `nextReplacementId` (`nextReplacementId`);
 
 --
+-- Indexes for table `kharcha`
+--
+ALTER TABLE `kharcha`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `department_id` (`department_id`),
+  ADD KEY `period_id` (`period_id`);
+
+--
+-- Indexes for table `payroll_periods`
+--
+ALTER TABLE `payroll_periods`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -224,7 +298,7 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `departments`
 --
 ALTER TABLE `departments`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `department_salary_history`
@@ -236,25 +310,37 @@ ALTER TABLE `department_salary_history`
 -- AUTO_INCREMENT for table `employees`
 --
 ALTER TABLE `employees`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
 
 --
 -- AUTO_INCREMENT for table `employee_expenses`
 --
 ALTER TABLE `employee_expenses`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `employee_loans`
 --
 ALTER TABLE `employee_loans`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `employee_replacements`
 --
 ALTER TABLE `employee_replacements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT for table `kharcha`
+--
+ALTER TABLE `kharcha`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `payroll_periods`
+--
+ALTER TABLE `payroll_periods`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `users`
@@ -292,6 +378,13 @@ ALTER TABLE `employee_replacements`
   ADD CONSTRAINT `employee_replacements_ibfk_2` FOREIGN KEY (`newEmployeeId`) REFERENCES `employees` (`id`),
   ADD CONSTRAINT `employee_replacements_ibfk_3` FOREIGN KEY (`previousReplacementId`) REFERENCES `employee_replacements` (`id`),
   ADD CONSTRAINT `employee_replacements_ibfk_4` FOREIGN KEY (`nextReplacementId`) REFERENCES `employee_replacements` (`id`);
+
+--
+-- Constraints for table `kharcha`
+--
+ALTER TABLE `kharcha`
+  ADD CONSTRAINT `kharcha_ibfk_1` FOREIGN KEY (`department_id`) REFERENCES `departments` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `kharcha_ibfk_2` FOREIGN KEY (`period_id`) REFERENCES `payroll_periods` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
