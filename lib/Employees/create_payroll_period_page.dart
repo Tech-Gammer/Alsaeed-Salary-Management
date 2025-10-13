@@ -253,7 +253,8 @@ class _CreatePayrollPeriodPageState extends State<CreatePayrollPeriodPage> {
         "period_name": _nameController.text,
         "start_date": DateFormat('yyyy-MM-dd').format(_startDate),
         "end_date": DateFormat('yyyy-MM-dd').format(_endDate),
-        "period_type": _selectedPeriodType,
+        // "period_type": _selectedPeriodType,
+        "period_type": _selectedPeriodType.isNotEmpty ? _selectedPeriodType : 'full_month',
       };
 
       final response = await http.post(

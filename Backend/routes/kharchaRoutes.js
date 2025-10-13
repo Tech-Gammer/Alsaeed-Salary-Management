@@ -5,23 +5,21 @@ const pool = require("../config/db");
 // ✅ Get all kharchas with filtering (updated for period_id)
 router.get("/", async (req, res) => {
   try {
-    const { department_id, employee_id, period_id, kharcha_type, page = 1, limit = 50 } = req.query;
+    const { department_id, period_id, start_date, end_date, page = 1, limit = 50 } = req.query;
     
     let query = `
       SELECT 
         k.*,
-        DATE_FORMAT(k.date, '%Y-%m-%d') as date,
-        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
-        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
+        DATE_FORMAT(k.date, '%Y-%m-%d') as date,  -- ✅ Format date properly
+        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,  -- ✅ Format created_at
+        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,  -- ✅ Format updated_at
         d.name as department_name,
-        e.name as employee_name,
         p.period_name,
-        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,  -- ✅ Format period dates
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,
         p.period_type
       FROM kharcha k
-      LEFT JOIN departments d ON k.department_id = d.id
-      LEFT JOIN employees e ON k.employee_id = e.id
+      JOIN departments d ON k.department_id = d.id
       JOIN payroll_periods p ON k.period_id = p.id
       WHERE 1=1
     `;
@@ -33,19 +31,19 @@ router.get("/", async (req, res) => {
       params.push(department_id);
     }
 
-    if (employee_id) {
-      query += " AND k.employee_id = ?";
-      params.push(employee_id);
-    }
-
     if (period_id) {
       query += " AND k.period_id = ?";
       params.push(period_id);
     }
 
-    if (kharcha_type) {
-      query += " AND k.kharcha_type = ?";
-      params.push(kharcha_type);
+    if (start_date) {
+      query += " AND k.date >= ?";
+      params.push(start_date);
+    }
+
+    if (end_date) {
+      query += " AND k.date <= ?";
+      params.push(end_date);
     }
 
     // Add ordering and pagination
@@ -70,19 +68,19 @@ router.get("/", async (req, res) => {
       countParams.push(department_id);
     }
 
-    if (employee_id) {
-      countQuery += " AND k.employee_id = ?";
-      countParams.push(employee_id);
-    }
-
     if (period_id) {
       countQuery += " AND k.period_id = ?";
       countParams.push(period_id);
     }
 
-    if (kharcha_type) {
-      countQuery += " AND k.kharcha_type = ?";
-      countParams.push(kharcha_type);
+    if (start_date) {
+      countQuery += " AND k.date >= ?";
+      countParams.push(start_date);
+    }
+
+    if (end_date) {
+      countQuery += " AND k.date <= ?";
+      countParams.push(end_date);
     }
 
     const [countRows] = await pool.query(countQuery, countParams);
@@ -137,16 +135,10 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-
-// ✅ Add new kharcha (updated for period_id) - ALLOW MULTIPLE
 router.post("/", async (req, res) => {
-  const { department_id, employee_id, amount, date, period_id, description, kharcha_type } = req.body;
+  const { kharcha_type, department_id, employee_id, amount, date, period_id, description } = req.body;
 
-  // Validation
-  if (!kharcha_type || !['department', 'individual'].includes(kharcha_type)) {
-    return res.status(400).json({ error: "Valid kharcha_type (department/individual) is required" });
-  }
-
+  // Validation based on kharcha type
   if (kharcha_type === 'department' && !department_id) {
     return res.status(400).json({ error: "Department ID is required for department kharcha" });
   }
@@ -174,25 +166,49 @@ router.post("/", async (req, res) => {
       return res.status(404).json({ error: "Payroll period not found" });
     }
 
-    // Check based on kharcha type
+    // For department kharcha, check if department exists
     if (kharcha_type === 'department') {
-      // Check if department exists
       const [deptRows] = await pool.query("SELECT id FROM departments WHERE id = ?", [department_id]);
       if (deptRows.length === 0) {
         return res.status(404).json({ error: "Department not found" });
       }
-    } else {
-      // Individual kharcha - Check if employee exists
-      const [empRows] = await pool.query("SELECT id, name FROM employees WHERE id = ?", [employee_id]);
+    }
+
+    // For individual kharcha, check if employee exists and get their department
+    let actual_department_id = department_id;
+    if (kharcha_type === 'individual') {
+      const [empRows] = await pool.query("SELECT id, department_id FROM employees WHERE id = ?", [employee_id]);
       if (empRows.length === 0) {
         return res.status(404).json({ error: "Employee not found" });
       }
+      // Use the employee's department for individual kharcha
+      actual_department_id = empRows[0].department_id;
     }
 
-    // Insert new kharcha (NO DUPLICATE CHECK - ALLOW MULTIPLE)
+    // Check for duplicate kharcha
+    let duplicateQuery, duplicateParams;
+    
+    if (kharcha_type === 'department') {
+      duplicateQuery = "SELECT id FROM kharcha WHERE department_id = ? AND period_id = ? AND kharcha_type = 'department'";
+      duplicateParams = [department_id, period_id];
+    } else {
+      duplicateQuery = "SELECT id FROM kharcha WHERE employee_id = ? AND period_id = ? AND kharcha_type = 'individual'";
+      duplicateParams = [employee_id, period_id];
+    }
+
+    const [existingRows] = await pool.query(duplicateQuery, duplicateParams);
+
+    if (existingRows.length > 0) {
+      return res.status(409).json({ 
+        error: `Kharcha already exists for this ${kharcha_type} in the selected period`,
+        existing_id: existingRows[0].id
+      });
+    }
+
+    // Insert new kharcha
     const [result] = await pool.query(
-      "INSERT INTO kharcha (department_id, employee_id, amount, date, period_id, description, kharcha_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [department_id || null, employee_id || null, amount, date, period_id, description || null, kharcha_type]
+      "INSERT INTO kharcha (kharcha_type, department_id, employee_id, amount, date, period_id, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [kharcha_type, actual_department_id, employee_id || null, amount, date, period_id, description || null]
     );
 
     // Get the created record with joins
@@ -204,6 +220,7 @@ router.post("/", async (req, res) => {
         DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
         d.name as department_name,
         e.name as employee_name,
+        e.designation as employee_designation,
         p.period_name,
         DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,

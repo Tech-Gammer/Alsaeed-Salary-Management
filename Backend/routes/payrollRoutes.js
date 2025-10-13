@@ -34,24 +34,45 @@ router.get("/department/:departmentId/employees", async (req, res) => {
 // Create payroll period
 router.post("/periods", async (req, res) => {
   const { period_name, start_date, end_date, period_type } = req.body;
-  
+
+  console.log("=== DEBUG: Received Request Body ===");
+  console.log("Full body:", JSON.stringify(req.body, null, 2));
+  console.log("period_type value:", period_type);
+  console.log("period_type type:", typeof period_type);
+  console.log("===================================");
+
   try {
+    const type = period_type && period_type.trim() !== "" ? period_type : "full_month";
+    
+    console.log("Final type to save:", type);
+
     const [result] = await pool.execute(
       "INSERT INTO payroll_periods (period_name, start_date, end_date, period_type) VALUES (?, ?, ?, ?)",
-      [period_name, start_date, end_date, period_type || 'full_month']
+      [period_name, start_date, end_date, type]
+    );
+
+    // ✅ VERIFY WHAT WAS ACTUALLY SAVED
+    const [savedRecord] = await pool.execute(
+      "SELECT * FROM payroll_periods WHERE id = ?",
+      [result.insertId]
     );
     
-    res.status(201).json({ 
-      id: result.insertId, 
-      period_name, 
-      start_date, 
+    console.log("=== SAVED RECORD ===");
+    console.log(JSON.stringify(savedRecord[0], null, 2));
+    console.log("====================");
+
+    res.status(201).json({
+      id: result.insertId,
+      period_name,
+      start_date,
       end_date,
-      period_type: period_type || 'full_month',
+      period_type: type,
+      saved_record: savedRecord[0], // ✅ Return what was actually saved
       message: "Payroll period created successfully"
     });
   } catch (err) {
     console.error("❌ Create period error:", err);
-    res.status(500).json({ error: "Database error" });
+    res.status(500).json({ error: "Database error", details: err.message });
   }
 });
 

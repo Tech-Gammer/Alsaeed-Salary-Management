@@ -234,40 +234,6 @@ class _KharchaManagementPageState extends State<KharchaManagementPage> {
   void _showFilterEmployeeSuggestionsOverlay() {
     _hideFilterEmployeeSuggestionsOverlay();
 
-    // if (_filteredFilterEmployees.isEmpty) return;
-
-    // final overlay = Overlay.of(context);
-    // _filterEmployeeOverlayEntry = OverlayEntry(
-    //   builder: (context) {
-    //     return CompositedTransformFollower(
-    //       link: _filterEmployeeSearchLayerLink,
-    //       showWhenUnlinked: false,
-    //       offset: const Offset(0.0, 55.0),
-    //       child: Material(
-    //         elevation: 4.0,
-    //         borderRadius: BorderRadius.circular(12),
-    //         child: SizedBox(
-    //           height: _filteredFilterEmployees.length * 60.0 > 240.0 ? 240.0 : null,
-    //           child: ListView.builder(
-    //             padding: EdgeInsets.zero,
-    //             shrinkWrap: true,
-    //             itemCount: _filteredFilterEmployees.length,
-    //             itemBuilder: (context, index) {
-    //               final employee = _filteredFilterEmployees[index];
-    //               final isSelected = _selectedEmployee?.id == employee.id;
-    //               return ListTile(
-    //                 title: Text(employee.name),
-    //                 subtitle: Text(employee.position),
-    //                 tileColor: isSelected ? secondaryColor.withOpacity(0.1) : null,
-    //                 onTap: () => _selectFilterEmployee(employee),
-    //               );
-    //             },
-    //           ),
-    //         ),
-    //       ),
-    //     );
-    //   },
-    // );
     if (_filteredFilterEmployees.isEmpty) {
       final overlay = Overlay.of(context);
       _filterEmployeeOverlayEntry = OverlayEntry(

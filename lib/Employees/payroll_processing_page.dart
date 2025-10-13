@@ -317,16 +317,47 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Row(
+              //   children: [
+              //     Container(
+              //       width: 40,
+              //       height: 40,
+              //       decoration: BoxDecoration(
+              //         color: primaryColor,
+              //         borderRadius: BorderRadius.circular(8),
+              //       ),
+              //       child: Icon(Icons.payments, color: surfaceColor, size: 24),
+              //     ),
+              //     SizedBox(width: 12),
+              //     Expanded(
+              //       child: Column(
+              //         crossAxisAlignment: CrossAxisAlignment.start,
+              //         children: [
+              //           Text("Payroll Processing",
+              //               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textPrimary)),
+              //           Text("Generate employee payroll",
+              //               style: TextStyle(fontSize: 14, color: textSecondary)),
+              //         ],
+              //       ),
+              //     ),
+              //   ],
+              // ),
+              // In _buildSidePanel() method, after the header section:
               Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
-                      color: primaryColor,
-                      borderRadius: BorderRadius.circular(8),
+                      color: surfaceColor,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: borderColor),
                     ),
-                    child: Icon(Icons.payments, color: surfaceColor, size: 24),
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(Icons.arrow_back, size: 16, color: textPrimary),
+                      padding: EdgeInsets.zero,
+                    ),
                   ),
                   SizedBox(width: 12),
                   Expanded(
