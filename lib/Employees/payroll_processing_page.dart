@@ -149,7 +149,7 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ));
   }
-
+//s
   double _getEmployeeKharcha(int employeeId) => _kharchas.where((k) => k.employeeId == employeeId && k.kharchaType == 'individual').fold(0.0, (sum, k) => sum + k.amount);
 
   double _getDepartmentKharcha() => _kharchas.where((k) => k.kharchaType == 'department' && k.departmentId == _selectedDepartment?.id).fold(0.0, (sum, k) => sum + k.amount);
