@@ -346,7 +346,6 @@ class _DepartmentManagementPageState extends State<DepartmentManagementPage> {
         backgroundColor: deptPrimaryColor,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 2.0,
-        // Add this in the AppBar of DepartmentManagementPage
         actions: [
           IconButton(
             icon: const Icon(Icons.account_balance_wallet),

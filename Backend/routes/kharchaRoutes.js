@@ -2,33 +2,41 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../config/db");
 
-// ✅ Get all kharchas with filtering (updated for period_id)
+// ✅ Get all kharchas with filtering (FIXED: Include both department and individual)
 router.get("/", async (req, res) => {
   try {
-    const { department_id, period_id, start_date, end_date, page = 1, limit = 50 } = req.query;
+    const { department_id, employee_id, period_id, start_date, end_date, page = 1, limit = 50 } = req.query;
     
     let query = `
       SELECT 
         k.*,
-        DATE_FORMAT(k.date, '%Y-%m-%d') as date,  -- ✅ Format date properly
-        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,  -- ✅ Format created_at
-        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,  -- ✅ Format updated_at
+        DATE_FORMAT(k.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
         d.name as department_name,
+        e.name as employee_name,
+        e.designation as employee_designation,
         p.period_name,
-        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,  -- ✅ Format period dates
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,
         p.period_type
       FROM kharcha k
-      JOIN departments d ON k.department_id = d.id
-      JOIN payroll_periods p ON k.period_id = p.id
+      LEFT JOIN departments d ON k.department_id = d.id
+      LEFT JOIN employees e ON k.employee_id = e.id
+      LEFT JOIN payroll_periods p ON k.period_id = p.id
       WHERE 1=1
     `;
     const params = [];
 
-    // Apply filters
+    // Apply filters - only if provided
     if (department_id) {
       query += " AND k.department_id = ?";
       params.push(department_id);
+    }
+
+    if (employee_id) {
+      query += " AND k.employee_id = ?";
+      params.push(employee_id);
     }
 
     if (period_id) {
@@ -68,6 +76,11 @@ router.get("/", async (req, res) => {
       countParams.push(department_id);
     }
 
+    if (employee_id) {
+      countQuery += " AND k.employee_id = ?";
+      countParams.push(employee_id);
+    }
+
     if (period_id) {
       countQuery += " AND k.period_id = ?";
       countParams.push(period_id);
@@ -85,6 +98,19 @@ router.get("/", async (req, res) => {
 
     const [countRows] = await pool.query(countQuery, countParams);
     const total = countRows[0].total;
+
+    console.log("🔍 Kharcha Query Results:", {
+      totalInDB: total,
+      returned: rows.length,
+      filters: { department_id, employee_id, period_id },
+      kharchas: rows.map(k => ({
+        id: k.id,
+        type: k.kharcha_type,
+        department: k.department_name,
+        employee: k.employee_name,
+        amount: k.amount
+      }))
+    });
 
     res.json({
       kharchas: rows,
@@ -109,16 +135,19 @@ router.get("/:id", async (req, res) => {
     const [rows] = await pool.query(
       `SELECT 
         k.*,
-        DATE_FORMAT(k.date, '%Y-%m-%d') as date,  -- ✅ Format date properly
-        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,  -- ✅ Format created_at
-        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,  -- ✅ Format updated_at
+        DATE_FORMAT(k.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
         d.name as department_name,
+        e.name as employee_name,
+        e.designation as employee_designation,
         p.period_name,
-        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,  -- ✅ Format period dates
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,
         p.period_type
        FROM kharcha k
        JOIN departments d ON k.department_id = d.id
+       LEFT JOIN employees e ON k.employee_id = e.id
        JOIN payroll_periods p ON k.period_id = p.id
        WHERE k.id = ?`,
       [id]
@@ -178,6 +207,7 @@ router.post("/", async (req, res) => {
     let actual_department_id = department_id;
     if (kharcha_type === 'individual') {
       const [empRows] = await pool.query("SELECT id, department_id FROM employees WHERE id = ?", [employee_id]);
+
       if (empRows.length === 0) {
         return res.status(404).json({ error: "Employee not found" });
       }
@@ -198,12 +228,6 @@ router.post("/", async (req, res) => {
 
     const [existingRows] = await pool.query(duplicateQuery, duplicateParams);
 
-    if (existingRows.length > 0) {
-      return res.status(409).json({ 
-        error: `Kharcha already exists for this ${kharcha_type} in the selected period`,
-        existing_id: existingRows[0].id
-      });
-    }
 
     // Insert new kharcha
     const [result] = await pool.query(
@@ -311,16 +335,19 @@ router.put("/:id", async (req, res) => {
     const [updatedRows] = await pool.query(
       `SELECT 
         k.*,
-        DATE_FORMAT(k.date, '%Y-%m-%d') as date,  -- ✅ Format date properly
-        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,  -- ✅ Format created_at
-        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,  -- ✅ Format updated_at
+        DATE_FORMAT(k.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
         d.name as department_name,
+        e.name as employee_name,
+        e.designation as employee_designation,
         p.period_name,
-        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,  -- ✅ Format period dates
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,
         p.period_type
        FROM kharcha k
        JOIN departments d ON k.department_id = d.id
+       LEFT JOIN employees e ON k.employee_id = e.id
        JOIN payroll_periods p ON k.period_id = p.id
        WHERE k.id = ?`,
       [id]
@@ -405,16 +432,19 @@ router.get("/department/:department_id", async (req, res) => {
     let query = `
       SELECT 
         k.*,
-        DATE_FORMAT(k.date, '%Y-%m-%d') as date,  -- ✅ Format date properly
-        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,  -- ✅ Format created_at
-        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,  -- ✅ Format updated_at
+        DATE_FORMAT(k.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
         d.name as department_name,
+        e.name as employee_name,
+        e.designation as employee_designation,
         p.period_name,
-        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,  -- ✅ Format period dates
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,
         p.period_type
       FROM kharcha k
       JOIN departments d ON k.department_id = d.id
+      LEFT JOIN employees e ON k.employee_id = e.id
       JOIN payroll_periods p ON k.period_id = p.id
       WHERE k.department_id = ?
     `;
@@ -484,16 +514,19 @@ router.get("/period/:period_id", async (req, res) => {
     const [rows] = await pool.query(
       `SELECT 
         k.*,
-        DATE_FORMAT(k.date, '%Y-%m-%d') as date,  -- ✅ Format date properly
-        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,  -- ✅ Format created_at
-        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,  -- ✅ Format updated_at
+        DATE_FORMAT(k.date, '%Y-%m-%d') as date,
+        DATE_FORMAT(k.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+        DATE_FORMAT(k.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at,
         d.name as department_name,
+        e.name as employee_name,
+        e.designation as employee_designation,
         p.period_name,
-        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,  -- ✅ Format period dates
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as period_start_date,
         DATE_FORMAT(p.end_date, '%Y-%m-%d') as period_end_date,
         p.period_type
        FROM kharcha k
        JOIN departments d ON k.department_id = d.id
+       LEFT JOIN employees e ON k.employee_id = e.id
        JOIN payroll_periods p ON k.period_id = p.id
        WHERE k.period_id = ?
        ORDER BY k.amount DESC, d.name ASC

@@ -1,7 +1,7 @@
 class Kharcha {
   final int id;
   final int? departmentId;
-  final int? employeeId;
+  final String? employeeId; // Changed to String to match your API
   final double amount;
   final DateTime date;
   final int periodId;
@@ -12,12 +12,12 @@ class Kharcha {
   final String periodName;
   final DateTime createdAt;
   final DateTime updatedAt;
-  bool includeInCurrentSalary; // Add this field
+  bool includeInCurrentSalary;
 
   Kharcha({
     required this.id,
     this.departmentId,
-    this.employeeId,
+    this.employeeId, // Now String
     required this.amount,
     required this.date,
     required this.periodId,
@@ -28,7 +28,7 @@ class Kharcha {
     required this.periodName,
     required this.createdAt,
     required this.updatedAt,
-    this.includeInCurrentSalary = true, // Default to true
+    this.includeInCurrentSalary = true,
   });
 
   // Helper getter for display name
@@ -52,6 +52,34 @@ class Kharcha {
   }
 
   factory Kharcha.fromJson(Map<String, dynamic> json) {
+    // Parse integer fields safely
+    int parseInt(dynamic value) {
+      if (value == null) return 0;
+      if (value is int) return value;
+      if (value is String) return int.tryParse(value) ?? 0;
+      if (value is double) return value.toInt();
+      return 0;
+    }
+
+    // Parse nullable integer fields safely
+    int? parseNullableInt(dynamic value) {
+      if (value == null) return null;
+      if (value is int) return value;
+      if (value is String) {
+        if (value.isEmpty) return null;
+        return int.tryParse(value);
+      }
+      if (value is double) return value.toInt();
+      return null;
+    }
+
+    // Parse string fields safely
+    String parseString(dynamic value) {
+      if (value == null) return '';
+      if (value is String) return value;
+      return value.toString();
+    }
+
     double parseAmount(dynamic amountValue) {
       if (amountValue == null) return 0.0;
       if (amountValue is double) return amountValue;
@@ -67,23 +95,41 @@ class Kharcha {
       if (dateValue == null) return DateTime.now();
       if (dateValue is DateTime) return dateValue;
       if (dateValue is String) {
-        return DateTime.tryParse(dateValue) ?? DateTime.now();
+        // Handle both date formats: "2025-10-23" and "2025-10-13 23:55:19"
+        if (dateValue.contains(' ')) {
+          return DateTime.tryParse(dateValue) ?? DateTime.now();
+        } else {
+          return DateTime.tryParse('$dateValue 00:00:00') ?? DateTime.now();
+        }
       }
       return DateTime.now();
     }
 
+    // Parse kharcha type with default
+    String kharchaType = 'department';
+    if (json['kharcha_type'] != null) {
+      kharchaType = parseString(json['kharcha_type']);
+    }
+
+    // Parse employee_id as String since your API returns it as String
+    String? employeeId;
+    if (json['employee_id'] != null) {
+      employeeId = parseString(json['employee_id']);
+      if (employeeId!.isEmpty) employeeId = null;
+    }
+
     return Kharcha(
-      id: json['id'] as int? ?? 0,
-      departmentId: json['department_id'] as int?,
-      employeeId: json['employee_id'] as int?,
+      id: parseInt(json['id']),
+      departmentId: parseNullableInt(json['department_id']),
+      employeeId: employeeId, // Now using String
       amount: parseAmount(json['amount']),
       date: parseDate(json['date']),
-      periodId: json['period_id'] as int? ?? 0,
-      description: json['description'] as String? ?? '',
-      kharchaType: json['kharcha_type'] as String? ?? 'department',
-      departmentName: json['department_name'] as String?,
-      employeeName: json['employee_name'] as String?,
-      periodName: json['period_name'] as String? ?? '',
+      periodId: parseInt(json['period_id']),
+      description: parseString(json['description']),
+      kharchaType: kharchaType,
+      departmentName: parseString(json['department_name']).isEmpty ? null : parseString(json['department_name']),
+      employeeName: parseString(json['employee_name']).isEmpty ? null : parseString(json['employee_name']),
+      periodName: parseString(json['period_name']),
       createdAt: parseDate(json['created_at']),
       updatedAt: parseDate(json['updated_at']),
       includeInCurrentSalary: json['include_in_current_salary'] as bool? ?? true,

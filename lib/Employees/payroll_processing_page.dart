@@ -97,6 +97,7 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           _leaveDaysControllers.clear();
           _initializeControllers();
         });
+        // Wait for employees to load, then fetch kharchas
         await _fetchKharchas();
       } else {
         _showError("Failed to load employees: ${response.statusCode}");
@@ -111,20 +112,103 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   Future<void> _fetchKharchas() async {
     if (_selectedDepartment == null || _selectedPeriod == null) return;
     try {
-      final params = {'period_id': _selectedPeriod!.id.toString()};
+      // Fetch all kharchas for the selected department OR individual kharchas for employees in that department
+      final params = {
+        'period_id': _selectedPeriod!.id.toString(),
+      };
+
       final url = Uri.parse("$_apiBaseUrl/kharcha").replace(queryParameters: params);
       final response = await http.get(url);
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final List kharchaList = (data is Map && data.containsKey('kharchas')) ? (data['kharchas'] ?? []) : (data is List ? data : []);
-        final List<Kharcha> parsedKharchas = kharchaList.map((k) => Kharcha.fromJson(k)).toList();
-        setState(() => _kharchas = parsedKharchas);
+        final List kharchaList = (data is Map && data.containsKey('kharchas'))
+            ? (data['kharchas'] ?? [])
+            : (data is List ? data : []);
+
+        final List<Kharcha> parsedKharchas = kharchaList.map((k) {
+          try {
+            return Kharcha.fromJson(k);
+          } catch (e) {
+            print("❌ Error parsing kharcha: $e");
+            print("❌ Problematic kharcha data: $k");
+            return Kharcha(
+              id: k['id'] ?? 0,
+              kharchaType: k['kharcha_type'] ?? 'department',
+              departmentId: k['department_id'],
+              employeeId: k['employee_id']?.toString(),
+              amount: (k['amount'] is num ? k['amount'].toDouble() : double.tryParse(k['amount']?.toString() ?? '0') ?? 0.0),
+              date: DateTime.tryParse(k['date']?.toString() ?? '') ?? DateTime.now(),
+              periodId: k['period_id'] ?? 0,
+              description: k['description']?.toString() ?? '',
+              departmentName: k['department_name']?.toString(),
+              employeeName: k['employee_name']?.toString(),
+              periodName: k['period_name']?.toString() ?? 'Unknown Period',
+              createdAt: DateTime.tryParse(k['created_at']?.toString() ?? '') ?? DateTime.now(),
+              updatedAt: DateTime.tryParse(k['updated_at']?.toString() ?? '') ?? DateTime.now(),
+            );
+          }
+        }).toList();
+
+        // Filter kharchas to include:
+        // 1. Department kharchas for the selected department
+        // 2. Individual kharchas for employees in the selected department
+        setState(() {
+          _kharchas = parsedKharchas.where((k) {
+            if (k.kharchaType == 'department') {
+              return k.departmentId == _selectedDepartment!.id;
+            } else if (k.kharchaType == 'individual') {
+              // Check if this individual kharcha belongs to an employee in our current department
+              final employeeId = k.employeeId;
+              if (employeeId != null) {
+                final emp = _employees.firstWhere(
+                      (e) => e.id.toString() == employeeId.toString(),
+                  orElse: () => EmployeePayroll(id: -1, name: '', designation: '', salary: 0, workingDays: 0, leaveDays: 0, departmentName: ''),
+                );
+                return emp.id != -1; // Employee exists in current department
+              }
+              return false;
+            }
+            return false;
+          }).toList();
+        });
+
+        // Debug output
+        _debugKharchaData();
       } else {
         print("❌ Failed to load kharchas: ${response.statusCode}");
+        print("❌ Response body: ${response.body}");
       }
     } catch (e) {
       print("❌ Error loading kharchas: $e");
     }
+  }
+
+  void _debugKharchaData() {
+    print("=== ENHANCED KHARCHA DEBUG ===");
+    print("Selected Department: ${_selectedDepartment?.name} (ID: ${_selectedDepartment?.id})");
+    print("Selected Period: ${_selectedPeriod?.periodName} (ID: ${_selectedPeriod?.id})");
+    print("Total kharchas loaded: ${_kharchas.length}");
+
+    final departmentKharchas = _kharchas.where((k) => k.kharchaType == 'department').toList();
+    final individualKharchas = _kharchas.where((k) => k.kharchaType == 'individual').toList();
+
+    print("Department kharchas: ${departmentKharchas.length}");
+    for (var k in departmentKharchas) {
+      print("  - ID: ${k.id}, Amount: ₹${k.amount}, Dept ID: ${k.departmentId}");
+    }
+
+    print("Individual kharchas: ${individualKharchas.length}");
+    for (var k in individualKharchas) {
+      print("  - ID: ${k.id}, Amount: ₹${k.amount}, Employee ID: ${k.employeeId}, Employee Name: ${k.employeeName}");
+    }
+
+    print("Current Employees: ${_employees.length}");
+    for (var emp in _employees) {
+      final kharcha = _getEmployeeKharcha(emp.id);
+      print("  - Employee: ${emp.name} (ID: ${emp.id}) - Kharcha: ₹$kharcha");
+    }
+    print("==============================");
   }
 
   void _initializeControllers() {
@@ -149,20 +233,55 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ));
   }
-//s
-  double _getEmployeeKharcha(int employeeId) => _kharchas.where((k) => k.employeeId == employeeId && k.kharchaType == 'individual').fold(0.0, (sum, k) => sum + k.amount);
 
-  double _getDepartmentKharcha() => _kharchas.where((k) => k.kharchaType == 'department' && k.departmentId == _selectedDepartment?.id).fold(0.0, (sum, k) => sum + k.amount);
+  double _getEmployeeKharcha(int employeeId) {
+    print("🔍 Looking for kharcha for employee ID: $employeeId (type: ${employeeId.runtimeType})");
 
-  bool _hasDepartmentKharcha() => _kharchas.any((k) => k.kharchaType == 'department' && k.departmentId == _selectedDepartment?.id);
+    final individualKharchas = _kharchas.where((k) {
+      final isIndividual = k.kharchaType == 'individual';
 
-  double _getTotalKharchaForEmployee(int employeeId) {
-    if (_hasDepartmentKharcha()) {
-      return 0.0;
-    }
+      if (!isIndividual) return false;
+
+      // Handle different ID types - convert both to string for comparison
+      final kharchaEmployeeId = k.employeeId?.toString();
+      final searchEmployeeId = employeeId.toString();
+
+      final matches = kharchaEmployeeId == searchEmployeeId;
+
+      if (matches) {
+        print("✅ Found individual kharcha for employee $employeeId: ₹${k.amount} (DB employee_id: ${k.employeeId})");
+      }
+
+      return matches;
+    }).toList();
+
+    final total = individualKharchas.fold(0.0, (sum, k) => sum + k.amount);
+    print("📊 Total individual kharcha for employee $employeeId: ₹$total (${individualKharchas.length} records)");
+
+    return total;
+  }
+
+  // Get department kharcha
+  double _getDepartmentKharcha() {
     return _kharchas
-        .where((k) => k.employeeId == employeeId && k.kharchaType == 'individual')
+        .where((k) => k.kharchaType == 'department' && k.departmentId == _selectedDepartment?.id)
         .fold(0.0, (sum, k) => sum + k.amount);
+  }
+
+  bool _hasDepartmentKharcha() {
+    return _kharchas.any((k) => k.kharchaType == 'department' && k.departmentId == _selectedDepartment?.id);
+  }
+
+  bool _hasIndividualKharcha() {
+    return _kharchas.any((k) => k.kharchaType == 'individual');
+  }
+
+  double _getIndividualKharchaForSelectedEmployees() {
+    return _selectedEmployees.fold(0.0, (sum, emp) {
+      final kharcha = _getEmployeeKharcha(emp.id);
+      print("💰 Employee ${emp.name} (${emp.id}) - Individual Kharcha: ₹$kharcha");
+      return sum + kharcha;
+    });
   }
 
   void _updateEmployeeDays(EmployeePayroll emp, bool isWorkingDays, String value) {
@@ -195,7 +314,6 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       }
     });
   }
-
   double _calculateNetSalary(EmployeePayroll emp) {
     if (_selectedPeriod == null) return emp.salary;
 
@@ -211,31 +329,56 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       totalSalary = days * dailyRate;
     }
 
-    final netSalary = totalSalary - _getTotalKharchaForEmployee(emp.id);
+    // ALWAYS deduct individual kharcha from employee salary
+    final individualKharcha = _getEmployeeKharcha(emp.id);
+    final netSalary = totalSalary - individualKharcha;
+
+    print("💰 Salary Calculation for ${emp.name}:");
+    print("   - Base Salary: ₹${emp.salary}");
+    print("   - Calculated Salary: ₹$totalSalary");
+    print("   - Individual Kharcha: ₹$individualKharcha");
+    print("   - Net Salary: ₹$netSalary");
+
     return netSalary < 0 ? 0 : netSalary;
   }
 
   double get _totalBaseSalary {
-    // Sum of individual net salaries (which already account for working days, leave days, and individual kharcha)
-    return _selectedEmployees.fold(0.0, (sum, emp) => sum + _calculateNetSalary(emp));
+    // Sum of individual calculated salaries (before any kharcha deductions)
+    return _selectedEmployees.fold(0.0, (sum, emp) {
+      if (_selectedPeriod == null) return sum + emp.salary;
+
+      double totalSalary;
+      final dailyRate = emp.salary / 30;
+
+      if (_selectedPeriod!.periodType == 'full_month') {
+        totalSalary = (emp.workingDays * dailyRate) + (emp.leaveDays * dailyRate);
+      } else {
+        final start = DateTime.parse(_selectedPeriod!.startDate);
+        final end = DateTime.parse(_selectedPeriod!.endDate);
+        final days = end.difference(start).inDays + 1;
+        totalSalary = days * dailyRate;
+      }
+      return sum + totalSalary;
+    });
   }
 
   double get _totalKharcha {
     if (_hasDepartmentKharcha()) {
+      // For department kharcha: use the full department amount
       return _getDepartmentKharcha();
     } else {
-      return _selectedEmployees.fold(0.0, (sum, emp) => sum + _getTotalKharchaForEmployee(emp.id));
+      // For individual kharcha: sum only for selected employees
+      return _getIndividualKharchaForSelectedEmployees();
     }
   }
 
   double get _totalNetSalary {
-    // For department kharcha: subtract from total base salary
-    // For individual kharcha: already subtracted in individual net salary calculations
     if (_hasDepartmentKharcha()) {
+      // For department kharcha: subtract from total base salary
       return _totalBaseSalary - _totalKharcha;
     } else {
-      // Individual kharcha already accounted for in _totalBaseSalary calculation
-      return _totalBaseSalary;
+      // For individual kharcha: already subtracted in individual calculations
+      return _selectedEmployees.fold(0.0, (sum, emp) => sum + _calculateNetSalary(emp));
     }
   }
 
@@ -317,32 +460,6 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Row(
-              //   children: [
-              //     Container(
-              //       width: 40,
-              //       height: 40,
-              //       decoration: BoxDecoration(
-              //         color: primaryColor,
-              //         borderRadius: BorderRadius.circular(8),
-              //       ),
-              //       child: Icon(Icons.payments, color: surfaceColor, size: 24),
-              //     ),
-              //     SizedBox(width: 12),
-              //     Expanded(
-              //       child: Column(
-              //         crossAxisAlignment: CrossAxisAlignment.start,
-              //         children: [
-              //           Text("Payroll Processing",
-              //               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textPrimary)),
-              //           Text("Generate employee payroll",
-              //               style: TextStyle(fontSize: 14, color: textSecondary)),
-              //         ],
-              //       ),
-              //     ),
-              //   ],
-              // ),
-              // In _buildSidePanel() method, after the header section:
               Row(
                 children: [
                   Container(
@@ -378,22 +495,20 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
             ],
           ),
 
-          SizedBox(height: 24),
-
           // Department Section
           _buildSectionHeader("Department", Icons.business_center),
-          SizedBox(height: 8),
+          SizedBox(height: 5),
           _buildDepartmentDropdown(),
 
-          SizedBox(height: 20),
+          SizedBox(height: 5),
 
           // Period Section
           _buildSectionHeader("Payroll Period", Icons.calendar_month),
-          SizedBox(height: 8),
+          SizedBox(height: 5),
           _buildPeriodDropdown(),
 
           if (_periods.isEmpty) ...[
-            SizedBox(height: 12),
+            SizedBox(height: 5),
             _buildCreatePeriodButton(),
           ],
 
@@ -417,6 +532,9 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   }
 
   Widget _buildGrandTotalCard() {
+    final hasDepartmentKharcha = _hasDepartmentKharcha();
+    final hasIndividualKharcha = _hasIndividualKharcha();
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(16),
@@ -455,7 +573,10 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           SizedBox(height: 12),
           _buildTotalItem("Total Base Salary", _totalBaseSalary, textPrimary),
           SizedBox(height: 8),
-          _buildTotalItem("Total Kharcha", _totalKharcha, warningColor),
+          if (hasDepartmentKharcha)
+            _buildTotalItem("Department Kharcha", _totalKharcha, warningColor),
+          if (hasIndividualKharcha && !hasDepartmentKharcha)
+            _buildTotalItem("Total Individual Kharcha", _totalKharcha, warningColor),
           SizedBox(height: 8),
           Divider(height: 1, color: borderColor),
           SizedBox(height: 8),
@@ -592,19 +713,17 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
 
   Widget _buildKharchaSummaryCard() {
     final hasDepartmentKharcha = _hasDepartmentKharcha();
-    final hasIndividualKharcha = _kharchas.any((k) => k.kharchaType == 'individual');
+    final hasIndividualKharcha = _hasIndividualKharcha();
 
     double departmentKharcha = 0.0;
     double individualKharcha = 0.0;
 
     if (hasDepartmentKharcha) {
       departmentKharcha = _getDepartmentKharcha();
-      individualKharcha = 0.0;
-    } else if (hasIndividualKharcha) {
-      departmentKharcha = 0.0;
-      individualKharcha = _kharchas.fold(0.0, (sum, k) => k.kharchaType == 'individual' ? sum + k.amount : sum);
-    } else {
-      return SizedBox.shrink();
+    }
+    if (hasIndividualKharcha) {
+      // Calculate individual kharcha for SELECTED employees only
+      individualKharcha = _getIndividualKharchaForSelectedEmployees();
     }
 
     final totalKharcha = departmentKharcha + individualKharcha;
@@ -645,25 +764,31 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
             ],
           ),
           SizedBox(height: 12),
-          Row(
-            children: [
-              if (hasDepartmentKharcha)
-                Expanded(
-                  child: _buildKharchaItem("Department", departmentKharcha),
-                ),
-              if (hasDepartmentKharcha && hasIndividualKharcha) SizedBox(width: 12),
-              if (hasIndividualKharcha)
-                Expanded(
-                  child: _buildKharchaItem("Individual", individualKharcha),
-                ),
-            ],
-          ),
+
+          if (hasDepartmentKharcha) ...[
+            _buildKharchaItem("Department Kharcha", departmentKharcha,
+                "Deducted from total base salary"),
+            SizedBox(height: 8),
+          ],
+
+          if (hasIndividualKharcha) ...[
+            _buildKharchaItem("Individual Kharcha (${_selectedEmployees.length} employees)", individualKharcha,
+                "Deducted from respective employees' salaries"),
+            SizedBox(height: 8),
+          ],
+
+          if (hasDepartmentKharcha && hasIndividualKharcha) ...[
+            Divider(height: 1, color: borderColor),
+            SizedBox(height: 8),
+            _buildKharchaItem("Total All Kharcha", totalKharcha,
+                "Combined department and individual", isTotal: true),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildKharchaItem(String label, double amount) {
+  Widget _buildKharchaItem(String label, double amount, String description, {bool isTotal = false}) {
     return Container(
       padding: EdgeInsets.all(8),
       decoration: BoxDecoration(
@@ -674,10 +799,23 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 12, color: textSecondary)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: TextStyle(
+                fontSize: 12,
+                color: textSecondary,
+                fontWeight: isTotal ? FontWeight.w600 : FontWeight.normal,
+              )),
+              Text("₹${amount.toStringAsFixed(2)}", style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isTotal ? warningColor : textPrimary,
+              )),
+            ],
+          ),
           SizedBox(height: 4),
-          Text("₹${amount.toStringAsFixed(2)}",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textPrimary)),
+          Text(description, style: TextStyle(fontSize: 10, color: textTertiary)),
         ],
       ),
     );
@@ -824,7 +962,6 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
           ),
         ),
         SizedBox(height: 8),
-
         // Employee List
         Expanded(
           child: ListView.builder(
@@ -841,6 +978,10 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
   }
 
   Widget _buildEmployeeItem(EmployeePayroll emp, bool isSelected) {
+    final individualKharcha = _getEmployeeKharcha(emp.id);
+    final hasDepartmentKharcha = _hasDepartmentKharcha();
+    final netSalary = _calculateNetSalary(emp);
+
     return Container(
       margin: EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -868,13 +1009,38 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
                   Text(emp.name, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                   SizedBox(height: 2),
                   Text(emp.designation, style: TextStyle(color: textSecondary, fontSize: 12)),
+                  // ALWAYS show individual kharcha if it exists
+                  if (individualKharcha > 0) ...[
+                    SizedBox(height: 2),
+                    Text(
+                      "Individual kharcha: ₹${individualKharcha.toStringAsFixed(2)}",
+                      style: TextStyle(fontSize: 10, color: warningColor),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
           Expanded(flex: 2, child: Text("₹${emp.salary.toStringAsFixed(2)}", style: TextStyle(fontSize: 14))),
-          Expanded(flex: 2, child: Text("₹${_getTotalKharchaForEmployee(emp.id).toStringAsFixed(2)}",
-              style: TextStyle(color: warningColor, fontSize: 14, fontWeight: FontWeight.w500))),
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ALWAYS show individual kharcha amount in the kharcha column
+                if (individualKharcha > 0)
+                  Text("₹${individualKharcha.toStringAsFixed(2)}",
+                      style: TextStyle(color: warningColor, fontSize: 14, fontWeight: FontWeight.w500))
+                else
+                  Text("--", style: TextStyle(color: textTertiary, fontSize: 14, fontWeight: FontWeight.w500)),
+
+                Text(
+                  hasDepartmentKharcha ? "Department kharcha" : "Individual kharcha",
+                  style: TextStyle(fontSize: 10, color: textTertiary),
+                ),
+              ],
+            ),
+          ),
           if (_selectedPeriod?.periodType == 'full_month') ...[
             Expanded(flex: 1, child: _buildDaysInput(emp, true)),
             Expanded(flex: 1, child: _buildDaysInput(emp, false)),
@@ -883,10 +1049,21 @@ class _PayrollProcessingPageState extends State<PayrollProcessingPage> {
             flex: 2,
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Text(
-                "₹${_calculateNetSalary(emp).toStringAsFixed(2)}",
-                textAlign: TextAlign.right,
-                style: TextStyle(fontWeight: FontWeight.bold, color: successColor, fontSize: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "₹${netSalary.toStringAsFixed(2)}",
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontWeight: FontWeight.bold, color: successColor, fontSize: 14),
+                  ),
+                  // Show deduction info if kharcha was applied
+                  if (individualKharcha > 0)
+                    Text(
+                      "after kharcha",
+                      style: TextStyle(fontSize: 10, color: textTertiary),
+                    ),
+                ],
               ),
             ),
           ),
